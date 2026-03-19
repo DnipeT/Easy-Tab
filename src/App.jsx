@@ -254,13 +254,29 @@ export default function App() {
             right. Click a small tab to open a big popup.
           </p>
 
-          {loading && (
-            <p className="mt-3 text-sm text-slate-500">Loading from database...</p>
-          )}
+        <div className="mb-6">
+          <div className="flex items-center gap-3 min-h-[28px]">
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+              Folder Tab Notes App
+            </h1>
 
-          {saving && (
-            <p className="mt-3 text-sm text-slate-500">Saving changes...</p>
+            {(loading || saving) && (
+              <div
+                className="h-5 w-5 rounded-full border-2 border-slate-300 border-t-slate-700 animate-spin"
+                aria-label={loading ? "Loading" : "Saving"}
+              />
+            )}
+          </div>
+
+          <p className="text-slate-600 mt-2">
+            Left side shows folders. Click a folder to see its small tabs on the
+            right. Click a small tab to open a big popup.
+          </p>
+
+          {errorMessage && (
+            <p className="mt-3 text-sm text-red-600">{errorMessage}</p>
           )}
+        </div>
 
           {errorMessage && (
             <p className="mt-3 text-sm text-red-600">{errorMessage}</p>
