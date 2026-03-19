@@ -29,10 +29,15 @@ export default function App() {
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [openTab, setOpenTab] = useState(null);
+  const [showAddTabModal, setShowAddTabModal] = useState(false);
+
   const [folderName, setFolderName] = useState("");
   const [tabTitle, setTabTitle] = useState("");
   const [tabDescription, setTabDescription] = useState("");
+
   const [draggedTabId, setDraggedTabId] = useState(null);
+  const [draggedFolderId, setDraggedFolderId] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -48,11 +53,13 @@ export default function App() {
     setLoading(true);
     setErrorMessage("");
 
-    const [{ data: foldersData, error: foldersError }, { data: tabsData, error: tabsError }] =
-      await Promise.all([
-        supabase.from("folders").select("*").order("id", { ascending: true }),
-        supabase.from("tabs").select("*").order("position", { ascending: true }),
-      ]);
+    const [
+      { data: foldersData, error: foldersError },
+      { data: tabsData, error: tabsError },
+    ] = await Promise.all([
+      supabase.from("folders").select("*").order("position", { ascending: true }),
+      supabase.from("tabs").select("*").order("position", { ascending: true }),
+    ]);
 
     if (foldersError || tabsError) {
       setErrorMessage(
@@ -96,11 +103,13 @@ export default function App() {
     setErrorMessage("");
 
     const color = folderStyles[folders.length % folderStyles.length];
+    const position = folders.length;
 
     const { error } = await supabase.from("folders").insert([
       {
         name: folderName.trim(),
         color,
+        position,
       },
     ]);
 
@@ -117,7 +126,9 @@ export default function App() {
 
   async function addTab(e) {
     e.preventDefault();
-    if (!selectedFolder || !tabTitle.trim() || !tabDescription.trim()) return;
+    if (!selectedFolder || !tabTitle.trim() || !tabDescription.trim()) {
+      return false;
+    }
 
     setSaving(true);
     setErrorMessage("");
@@ -138,13 +149,14 @@ export default function App() {
     if (error) {
       setErrorMessage(error.message);
       setSaving(false);
-      return;
+      return false;
     }
 
     setTabTitle("");
     setTabDescription("");
     await loadData();
     setSaving(false);
+    return true;
   }
 
   async function deleteFolder(folderId) {
@@ -242,20 +254,64 @@ export default function App() {
     setSaving(false);
   }
 
+  function handleFolderDragStart(folderId) {
+    setDraggedFolderId(folderId);
+  }
+
+  function handleFolderDragEnd() {
+    setDraggedFolderId(null);
+  }
+
+  async function handleFolderDrop(targetFolderId) {
+    if (draggedFolderId === null || draggedFolderId === targetFolderId) {
+      setDraggedFolderId(null);
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage("");
+
+    const updatedFolders = [...folders];
+    const fromIndex = updatedFolders.findIndex(
+      (folder) => folder.id === draggedFolderId
+    );
+    const toIndex = updatedFolders.findIndex(
+      (folder) => folder.id === targetFolderId
+    );
+
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggedFolderId(null);
+      setSaving(false);
+      return;
+    }
+
+    const [movedFolder] = updatedFolders.splice(fromIndex, 1);
+    updatedFolders.splice(toIndex, 0, movedFolder);
+
+    const updates = updatedFolders.map((folder, index) =>
+      supabase.from("folders").update({ position: index }).eq("id", folder.id)
+    );
+
+    const results = await Promise.all(updates);
+    const failed = results.find((result) => result.error);
+
+    if (failed?.error) {
+      setErrorMessage(failed.error.message);
+      setDraggedFolderId(null);
+      setSaving(false);
+      return;
+    }
+
+    setDraggedFolderId(null);
+    await loadData();
+    setSaving(false);
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 p-6 md:p-10">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
-            Folder Tab Notes App
-          </h1>
-          <p className="text-slate-600 mt-2">
-            Left side shows folders. Click a folder to see its small tabs on the
-            right. Click a small tab to open a big popup.
-          </p>
-
-        <div className="mb-6">
-          <div className="flex items-center gap-3 min-h-[28px]">
+          <div className="flex items-center gap-3 min-h-[40px]">
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
               Folder Tab Notes App
             </h1>
@@ -272,11 +328,6 @@ export default function App() {
             Left side shows folders. Click a folder to see its small tabs on the
             right. Click a small tab to open a big popup.
           </p>
-
-          {errorMessage && (
-            <p className="mt-3 text-sm text-red-600">{errorMessage}</p>
-          )}
-        </div>
 
           {errorMessage && (
             <p className="mt-3 text-sm text-red-600">{errorMessage}</p>
@@ -308,12 +359,19 @@ export default function App() {
                 {folders.map((folder) => (
                   <div key={folder.id} className="relative group">
                     <button
+                      draggable
+                      onDragStart={() => handleFolderDragStart(folder.id)}
+                      onDragEnd={handleFolderDragEnd}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleFolderDrop(folder.id)}
                       onClick={() => setSelectedFolderId(folder.id)}
-                      className={`w-full rounded-2xl border px-4 py-4 text-left transition ${folder.color} ${
+                      className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+                        folder.color
+                      } ${
                         selectedFolderId === folder.id
                           ? "ring-2 ring-slate-400"
                           : "hover:scale-[1.01]"
-                      }`}
+                      } ${draggedFolderId === folder.id ? "opacity-50 scale-95" : ""}`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -357,30 +415,14 @@ export default function App() {
                   </div>
                 </div>
 
-                <form
-                  onSubmit={addTab}
-                  className="grid gap-4 mb-8 lg:grid-cols-[1fr_1.5fr_auto]"
-                >
-                  <input
-                    value={tabTitle}
-                    onChange={(e) => setTabTitle(e.target.value)}
-                    placeholder="Tab title"
-                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
-                  />
-                  <input
-                    value={tabDescription}
-                    onChange={(e) => setTabDescription(e.target.value)}
-                    placeholder="Tab description"
-                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
-                  />
+                <div className="mb-8 flex justify-center">
                   <button
-                    type="submit"
-                    disabled={saving}
-                    className="rounded-2xl bg-slate-900 text-white px-5 py-3 font-semibold hover:opacity-90 transition disabled:opacity-50"
+                    onClick={() => setShowAddTabModal(true)}
+                    className="rounded-2xl bg-slate-900 text-white px-5 py-3 font-semibold hover:opacity-90 transition"
                   >
                     Add tab
                   </button>
-                </form>
+                </div>
 
                 {selectedFolder.tabs.length > 0 ? (
                   <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
@@ -435,6 +477,72 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {showAddTabModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl rounded-[36px] bg-white shadow-2xl overflow-hidden">
+            <div className="p-8 md:p-10 border-b border-slate-200">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.25em] text-slate-500 mb-3">
+                    New tab
+                  </p>
+                  <h3 className="text-3xl md:text-4xl font-bold">Add a tab</h3>
+                </div>
+                <button
+                  onClick={() => setShowAddTabModal(false)}
+                  className="h-10 w-10 rounded-full bg-slate-100 hover:bg-slate-200 transition text-2xl leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                const success = await addTab(e);
+                if (success) setShowAddTabModal(false);
+              }}
+              className="p-8 md:p-10"
+            >
+              <div className="space-y-5">
+                <input
+                  value={tabTitle}
+                  onChange={(e) => setTabTitle(e.target.value)}
+                  placeholder="Title tab"
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-4 outline-none focus:ring-2 focus:ring-slate-400 text-lg"
+                />
+
+                <textarea
+                  value={tabDescription}
+                  onChange={(e) => setTabDescription(e.target.value)}
+                  placeholder="Title description"
+                  rows={8}
+                  className="w-full rounded-2xl border border-slate-300 px-4 py-4 outline-none focus:ring-2 focus:ring-slate-400 text-lg resize-none"
+                />
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddTabModal(false)}
+                    className="rounded-2xl border border-slate-300 px-6 py-3 font-semibold hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-2xl bg-slate-900 text-white px-6 py-3 font-semibold hover:opacity-90 transition disabled:opacity-50"
+                  >
+                    Submit
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {openTab && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
