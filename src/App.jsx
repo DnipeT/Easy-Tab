@@ -156,10 +156,13 @@ export default function App() {
     setAuthBusy(true);
     setAuthMessage("");
 
-    const { error } = await supabase.auth.signUp({
-      email: signupEmail.trim(),
-      password: signupPassword,
-    });
+  const { error } = await supabase.auth.signUp({
+    email: signupEmail.trim(),
+    password: signupPassword,
+    options: {
+      emailRedirectTo: window.location.origin, // this work both local and vercel host
+    },
+  });
 
     if (error) {
       setAuthMessage(error.message);
