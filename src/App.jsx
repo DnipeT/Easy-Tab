@@ -46,6 +46,7 @@ export default function App() {
 
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isResetFlow, setIsResetFlow] = useState(false);
 
   const [authMode, setAuthMode] = useState("login"); // login | signup | forgot
 
@@ -243,6 +244,7 @@ export default function App() {
     }
 
     setAuthBusy(true);
+    setIsResetFlow(true);
     setAuthMessage("");
 
     const { data: verifyData, error: verifyError } =
@@ -256,6 +258,7 @@ export default function App() {
       console.error("verifyOtp recovery error:", verifyError);
       setAuthMessage(verifyError.message);
       setAuthBusy(false);
+      setIsResetFlow(false);
       return;
     }
 
@@ -265,32 +268,33 @@ export default function App() {
         "Reset code verification failed. Please request a new code and try again."
       );
       setAuthBusy(false);
+      setIsResetFlow(false);
       return;
     }
 
-    const { data: updateData, error: updateError } =
-      await supabase.auth.updateUser({
-        password: newPassword,
-      });
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
 
     if (updateError) {
       console.error("updateUser password error:", updateError);
       setAuthMessage(updateError.message);
       setAuthBusy(false);
+      setIsResetFlow(false);
       return;
     }
-
-    console.log("Password updated:", updateData);
-
-    await supabase.auth.signOut();
 
     setForgotCode("");
     setForgotNewPassword("");
     setLoginEmail(email);
-    setLoginPassword(newPassword);
+    setLoginPassword("");
     setAuthMode("login");
     setAuthMessage("Password updated successfully. Please log in with your new password.");
+
+    await supabase.auth.signOut();
+
     setAuthBusy(false);
+    setIsResetFlow(false);
   }
 
   async function signOut() {
@@ -589,6 +593,17 @@ export default function App() {
     );
   }
 
+  if (isResetFlow) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-slate-100 text-slate-900">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 text-center">
+          <div className="text-lg font-semibold mb-2">Updating password...</div>
+          <div className="text-slate-600">Please wait</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!session) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-900 p-6 md:p-10">
@@ -597,6 +612,9 @@ export default function App() {
           <p className="text-slate-600 mb-6">
             Login with password, sign up with email + password + code, or reset
             your password with a code.
+            <span className="block mt-2">
+              Check Email Spam. I'm sorry I'm using a free email service. So emails wont be able to your inbox.
+            </span>
           </p>
 
           <div className="flex gap-2 mb-6">
