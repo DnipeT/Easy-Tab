@@ -30,19 +30,14 @@ export default function App() {
     () => ({
       primary:
         "inline-flex items-center justify-center rounded-2xl px-5 py-3 font-semibold text-white bg-slate-900 shadow-md shadow-slate-900/10 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/20 active:translate-y-0 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-slate-300 disabled:opacity-50 disabled:cursor-not-allowed",
-
       secondary:
         "inline-flex items-center justify-center rounded-2xl px-5 py-3 font-semibold text-slate-700 bg-white border border-slate-300 shadow-sm transition-all duration-200 hover:bg-slate-50 hover:border-slate-400 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-slate-200 disabled:opacity-50 disabled:cursor-not-allowed",
-
       accent:
         "inline-flex items-center justify-center rounded-2xl px-5 py-3 font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-md shadow-blue-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-blue-500/30 active:translate-y-0 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:opacity-50 disabled:cursor-not-allowed",
-
       danger:
         "inline-flex items-center justify-center h-8 w-8 rounded-full text-lg text-slate-600 bg-white/95 border border-slate-200 shadow-sm transition-all duration-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:opacity-50 disabled:cursor-not-allowed",
-
       iconLight:
         "inline-flex items-center justify-center h-10 w-10 rounded-full bg-slate-100 text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-slate-200",
-
       iconDark:
         "inline-flex items-center justify-center h-10 w-10 rounded-full bg-white/20 text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/30 hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-white/20",
     }),
@@ -108,7 +103,9 @@ export default function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      console.log("Auth event:", event, nextSession);
+
       setSession(nextSession ?? null);
 
       if (nextSession) {
@@ -129,14 +126,18 @@ export default function App() {
 
   async function handleLogin(e) {
     e.preventDefault();
-    if (!loginEmail.trim() || !loginPassword.trim()) return;
+
+    const email = loginEmail.trim();
+    const password = loginPassword;
+
+    if (!email || !password) return;
 
     setAuthBusy(true);
     setAuthMessage("");
 
     const { error } = await supabase.auth.signInWithPassword({
-      email: loginEmail.trim(),
-      password: loginPassword,
+      email,
+      password,
     });
 
     if (error) {
@@ -151,14 +152,18 @@ export default function App() {
 
   async function handleSignupStart(e) {
     e.preventDefault();
-    if (!signupEmail.trim() || !signupPassword.trim()) return;
+
+    const email = signupEmail.trim();
+    const password = signupPassword;
+
+    if (!email || !password) return;
 
     setAuthBusy(true);
     setAuthMessage("");
 
     const { error } = await supabase.auth.signUp({
-      email: signupEmail.trim(),
-      password: signupPassword,
+      email,
+      password,
     });
 
     if (error) {
@@ -173,14 +178,18 @@ export default function App() {
 
   async function handleSignupVerify(e) {
     e.preventDefault();
-    if (!signupEmail.trim() || !signupCode.trim()) return;
+
+    const email = signupEmail.trim();
+    const code = signupCode.trim();
+
+    if (!email || !code) return;
 
     setAuthBusy(true);
     setAuthMessage("");
 
     const { error } = await supabase.auth.verifyOtp({
-      email: signupEmail.trim(),
-      token: signupCode.trim(),
+      email,
+      token: code,
       type: "email",
     });
 
@@ -197,14 +206,17 @@ export default function App() {
 
   async function handleForgotSendCode(e) {
     e.preventDefault();
-    if (!forgotEmail.trim()) return;
+
+    const email = forgotEmail.trim();
+    if (!email) return;
 
     setAuthBusy(true);
     setAuthMessage("");
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      forgotEmail.trim()
-    );
+    setForgotCode("");
+    setForgotNewPassword("");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
 
     if (error) {
       setAuthMessage(error.message);
@@ -218,38 +230,66 @@ export default function App() {
 
   async function handleForgotVerifyAndReset(e) {
     e.preventDefault();
-    if (!forgotEmail.trim() || !forgotCode.trim() || !forgotNewPassword.trim()) {
+
+    const email = forgotEmail.trim();
+    const code = forgotCode.trim();
+    const newPassword = forgotNewPassword.trim();
+
+    if (!email || !code || !newPassword) return;
+
+    if (newPassword.length < 6) {
+      setAuthMessage("New password must be at least 6 characters.");
       return;
     }
 
     setAuthBusy(true);
     setAuthMessage("");
 
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email: forgotEmail.trim(),
-      token: forgotCode.trim(),
-      type: "recovery",
-    });
+    const { data: verifyData, error: verifyError } =
+      await supabase.auth.verifyOtp({
+        email,
+        token: code,
+        type: "recovery",
+      });
 
     if (verifyError) {
+      console.error("verifyOtp recovery error:", verifyError);
       setAuthMessage(verifyError.message);
       setAuthBusy(false);
       return;
     }
 
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: forgotNewPassword,
-    });
+    if (!verifyData?.session) {
+      console.error("No recovery session created:", verifyData);
+      setAuthMessage(
+        "Reset code verification failed. Please request a new code and try again."
+      );
+      setAuthBusy(false);
+      return;
+    }
+
+    const { data: updateData, error: updateError } =
+      await supabase.auth.updateUser({
+        password: newPassword,
+      });
 
     if (updateError) {
+      console.error("updateUser password error:", updateError);
       setAuthMessage(updateError.message);
       setAuthBusy(false);
       return;
     }
 
+    console.log("Password updated:", updateData);
+
+    await supabase.auth.signOut();
+
     setForgotCode("");
     setForgotNewPassword("");
-    setAuthMessage("Password updated successfully.");
+    setLoginEmail(email);
+    setLoginPassword(newPassword);
+    setAuthMode("login");
+    setAuthMessage("Password updated successfully. Please log in with your new password.");
     setAuthBusy(false);
   }
 
@@ -595,22 +635,30 @@ export default function App() {
           </div>
 
           {authMode === "login" && (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" autoComplete="on">
               <input
                 type="email"
+                name="email"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
                 placeholder="Email"
+                autoComplete="username"
                 className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
               />
               <input
                 type="password"
+                name="password"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 placeholder="Password"
+                autoComplete="current-password"
                 className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
               />
-              <button type="submit" disabled={authBusy} className={`w-full ${buttonStyles.primary}`}>
+              <button
+                type="submit"
+                disabled={authBusy}
+                className={`w-full ${buttonStyles.primary}`}
+              >
                 {authBusy ? "Logging in..." : "Login"}
               </button>
             </form>
@@ -618,22 +666,30 @@ export default function App() {
 
           {authMode === "signup" && (
             <div className="space-y-6">
-              <form onSubmit={handleSignupStart} className="space-y-4">
+              <form onSubmit={handleSignupStart} className="space-y-4" autoComplete="on">
                 <input
                   type="email"
+                  name="signup-email"
                   value={signupEmail}
                   onChange={(e) => setSignupEmail(e.target.value)}
                   placeholder="Email"
+                  autoComplete="email"
                   className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
                 />
                 <input
                   type="password"
+                  name="signup-password"
                   value={signupPassword}
                   onChange={(e) => setSignupPassword(e.target.value)}
                   placeholder="Password"
+                  autoComplete="new-password"
                   className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
                 />
-                <button type="submit" disabled={authBusy} className={`w-full ${buttonStyles.primary}`}>
+                <button
+                  type="submit"
+                  disabled={authBusy}
+                  className={`w-full ${buttonStyles.primary}`}
+                >
                   <span className="mr-2 text-lg">✦</span>
                   {authBusy ? "Sending code..." : "Sign up and send code"}
                 </button>
@@ -641,12 +697,18 @@ export default function App() {
 
               <form onSubmit={handleSignupVerify} className="space-y-4">
                 <input
+                  name="signup-code"
                   value={signupCode}
                   onChange={(e) => setSignupCode(e.target.value)}
                   placeholder="Enter signup code"
+                  autoComplete="one-time-code"
                   className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
                 />
-                <button type="submit" disabled={authBusy} className={`w-full ${buttonStyles.accent}`}>
+                <button
+                  type="submit"
+                  disabled={authBusy}
+                  className={`w-full ${buttonStyles.accent}`}
+                >
                   <span className="mr-2 text-lg">✓</span>
                   {authBusy ? "Verifying..." : "Verify signup code"}
                 </button>
@@ -659,12 +721,18 @@ export default function App() {
               <form onSubmit={handleForgotSendCode} className="space-y-4">
                 <input
                   type="email"
+                  name="forgot-email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   placeholder="Email"
+                  autoComplete="email"
                   className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
                 />
-                <button type="submit" disabled={authBusy} className={`w-full ${buttonStyles.primary}`}>
+                <button
+                  type="submit"
+                  disabled={authBusy}
+                  className={`w-full ${buttonStyles.primary}`}
+                >
                   <span className="mr-2 text-lg">↗</span>
                   {authBusy ? "Sending..." : "Send reset code"}
                 </button>
@@ -672,19 +740,27 @@ export default function App() {
 
               <form onSubmit={handleForgotVerifyAndReset} className="space-y-4">
                 <input
+                  name="forgot-code"
                   value={forgotCode}
                   onChange={(e) => setForgotCode(e.target.value)}
                   placeholder="Enter reset code"
+                  autoComplete="one-time-code"
                   className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
                 />
                 <input
                   type="password"
+                  name="new-password"
                   value={forgotNewPassword}
                   onChange={(e) => setForgotNewPassword(e.target.value)}
                   placeholder="New password"
+                  autoComplete="new-password"
                   className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
                 />
-                <button type="submit" disabled={authBusy} className={`w-full ${buttonStyles.accent}`}>
+                <button
+                  type="submit"
+                  disabled={authBusy}
+                  className={`w-full ${buttonStyles.accent}`}
+                >
                   <span className="mr-2 text-lg">🔒</span>
                   {authBusy ? "Resetting..." : "Verify code and reset password"}
                 </button>
@@ -751,7 +827,11 @@ export default function App() {
                   placeholder="Create new folder"
                   className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-400"
                 />
-                <button type="submit" disabled={saving} className={`w-full ${buttonStyles.primary}`}>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className={`w-full ${buttonStyles.primary}`}
+                >
                   <span className="mr-2 text-lg">＋</span>
                   Add folder
                 </button>
